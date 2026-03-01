@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video → Image Converter</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+body{
+    margin:0;
+    font-family:Arial, sans-serif;
+    background:#0f172a;
+    color:white;
+    text-align:center;
+}
+
+.container{
+    padding:20px;
+}
+
+h1{
+    color:#22c55e;
+}
+
+button{
+    padding:12px 18px;
+    margin:8px;
+    border:none;
+    border-radius:10px;
+    background:#22c55e;
+    color:white;
+    font-size:16px;
+    cursor:pointer;
+}
+
+button:hover{
+    background:#16a34a;
+}
+
+#status{
+    margin-top:15px;
+    font-size:18px;
+}
+
+/* Progress Bar */
+.progress-box{
+    width:90%;
+    max-width:500px;
+    margin:20px auto;
+    background:#1e293b;
+    border-radius:12px;
+    overflow:hidden;
+}
+
+.progress-bar{
+    height:22px;
+    width:0%;
+    background:#22c55e;
+    transition:width 0.2s;
+}
+
+.percent{
+    margin-top:8px;
+    font-size:18px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🎬 Video → Image Converter</h1>
+
+<input type="file" id="videoInput" accept="video/*"><br>
+
+<button onclick="convertVideo()">Convert Video</button>
+<button onclick="downloadZip()">⬇ Download ZIP</button>
+
+<div id="status"></div>
+
+<div class="progress-box">
+    <div class="progress-bar" id="progressBar"></div>
+</div>
+
+<div class="percent" id="percent">0%</div>
+
+</div>
+
+<video id="video" style="display:none"></video>
+<canvas id="canvas" style="display:none"></canvas>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const progressBar = document.getElementById("progressBar");
+const percentText = document.getElementById("percent");
+
+let zip = new JSZip();
+let imageCount = 0;
+let totalFrames = 0;
+
+async function convertVideo(){
+
+    const file = document.getElementById("videoInput").files[0];
+    const status = document.getElementById("status");
+
+    if(!file){
+        alert("Select a video first!");
+        return;
+    }
+
+    zip = new JSZip();
+    imageCount = 0;
+
+    status.innerText = "Loading video...";
+
+    video.src = URL.createObjectURL(file);
+
+    await new Promise(resolve=>{
+        video.onloadedmetadata = resolve;
+    });
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const interval = 8;
+    const duration = video.duration;
+
+    let timestamps = [];
+
+    for(let t=0; t<duration; t+=interval){
+        timestamps.push(t);
+    }
+
+    if(timestamps[timestamps.length-1] !== duration){
+        timestamps.push(duration);
+    }
+
+    totalFrames = timestamps.length;
+
+    for(const time of timestamps){
+
+        video.currentTime = time;
+
+        await new Promise(resolve=>{
+            video.onseeked = resolve;
+        });
+
+        ctx.drawImage(video,0,0);
+
+        const blob = await new Promise(resolve =>
+            canvas.toBlob(resolve,"image/png")
+        );
+
+        imageCount++;
+
+        const fileName =
+        String(imageCount).padStart(3,"0") + ".png";
+
+        zip.file(fileName, blob);
+
+        // Progress update
+        let progress = Math.floor((imageCount/totalFrames)*100);
+        progressBar.style.width = progress + "%";
+        percentText.innerText = progress + "%";
+
+        status.innerText =
+        `Processing ${imageCount} / ${totalFrames}`;
+
+        await new Promise(r=>setTimeout(r,40));
+    }
+
+    status.innerText = "✅ Conversion Complete!";
+}
+
+async function downloadZip(){
+
+    const status = document.getElementById("status");
+
+    if(imageCount === 0){
+        alert("Convert video first!");
+        return;
+    }
+
+    status.innerText = "Creating ZIP...";
+
+    const content = await zip.generateAsync({
+        type:"blob",
+        compression:"DEFLATE",
+        compressionOptions:{ level:6 }
+    });
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(content);
+    a.download = "video_images.zip";
+    a.click();
+
+    status.innerText = "✅ Download Started!";
+}
+</script>
+
+</body>
+</html>
